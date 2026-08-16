@@ -38,6 +38,10 @@ const envSchema = z.object({
         .int()
         .positive()
         .default(3000),
+
+    CHUNK_SIZE: z.coerce.number().int().positive().default(1000),
+
+    CHUNK_OVERLAP: z.coerce.number().int().nonnegative().default(200),
 });
 
 export const env = envSchema.parse(process.env);
