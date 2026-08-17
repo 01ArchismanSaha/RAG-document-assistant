@@ -75,4 +75,14 @@ describe("chunkText", () => {
             })
         ).toThrow("CHUNK_OVERLAP must be smaller than CHUNK_SIZE");
     });
+
+    it("removes null characters from extracted text", () => {
+        const chunks = chunkText(
+            "Hello\0 world. This is a test document."
+        );
+
+        expect(chunks).toHaveLength(1);
+        expect(chunks[0].content).not.toContain("\0");
+        expect(chunks[0].content).toContain("Hello world.");
+    });
 });
