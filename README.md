@@ -10,6 +10,8 @@ A multi-tenant Retrieval-Augmented Generation (RAG) document assistant built wit
 - PostgreSQL
 - pgvector
 - Docker & Docker Compose
+- OpenAI Embeddings
+- Vitest
 
 ## Getting Started
 
@@ -18,6 +20,7 @@ A multi-tenant Retrieval-Augmented Generation (RAG) document assistant built wit
 - Node.js
 - npm
 - Docker Desktop
+- OpenAI API key
 
 ### Installation
 
@@ -33,10 +36,22 @@ Create the environment file:
 cp .env.example .env
 ~~~
 
+Add your OpenAI embedding API key to `.env`:
+
+~~~env
+EMBEDDING_API_KEY=your_api_key
+~~~
+
 Start PostgreSQL:
 
 ~~~bash
 docker compose up -d
+~~~
+
+Run database migrations:
+
+~~~bash
+npm run migrate
 ~~~
 
 Start the development server:
@@ -78,6 +93,15 @@ src/
 │       └── postgres.ts
 │
 ├── modules/
+│   ├── ai/
+│   │   └── embedding.service.ts
+│   │
+│   ├── documents/
+│   │   ├── chunker.ts
+│   │   ├── document.repository.ts
+│   │   ├── ingestion.service.ts
+│   │   └── text-extractor.ts
+│   │
 │   └── health/
 │       ├── health.routes.ts
 │       └── health.service.ts
@@ -87,6 +111,10 @@ src/
 
 migrations/
 tests/
+├── unit/
+│   └── documents/
+│       ├── chunker.test.ts
+│       └── ingestion.service.test.ts
 
 .env.example
 .gitignore
@@ -104,20 +132,24 @@ README.md
 - [x] PostgreSQL connection
 - [x] Docker Compose PostgreSQL environment
 - [x] pgvector-enabled PostgreSQL
+- [x] Database migrations and schema
+- [x] Multi-tenant document data model
+- [x] PDF, DOCX and TXT text extraction
+- [x] Configurable text chunking with overlap
+- [x] OpenAI embedding generation
+- [x] Vector storage using pgvector
+- [x] Document ingestion service
+- [x] Unit tests for chunking and ingestion
 - [x] Health check endpoint
 
 ### Planned
 
-- [ ] Database migrations and schema
-- [ ] Multi-tenant document management
-- [ ] Document upload and ingestion
-- [ ] Text extraction and chunking
-- [ ] Embedding generation
+- [ ] Document upload API
 - [ ] Vector similarity search
 - [ ] RAG question answering
 - [ ] Conversation memory
 - [ ] Source citations
 - [ ] Streaming responses
 - [ ] Resilience and retry handling
-- [ ] Automated tests
+- [ ] Integration tests
 - [ ] API documentation

@@ -11,9 +11,18 @@ export async function generateEmbedding(text: string): Promise<number[]> {
         input: text,
     });
 
-    const embedding = response.data[0].embedding;
+    const firstResult = response.data[0];
 
-    if (embedding.length !== env.EMBEDDING_DIMENSIONS) {
+    if (!firstResult) {
+        throw new Error("Embedding API returned no embedding");
+    }
+
+    const embedding = firstResult.embedding;
+
+    if (
+        env.EMBEDDING_DIMENSIONS !== undefined &&
+        embedding.length !== env.EMBEDDING_DIMENSIONS
+    ) {
         throw new Error(
             `Embedding dimension mismatch: expected ${env.EMBEDDING_DIMENSIONS}, got ${embedding.length}`
         );
