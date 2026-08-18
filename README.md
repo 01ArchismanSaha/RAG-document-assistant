@@ -2,6 +2,8 @@
 
 A multi-tenant Retrieval-Augmented Generation (RAG) document assistant built with Node.js, TypeScript, PostgreSQL, and pgvector.
 
+The system supports tenant-isolated document ingestion, text extraction, configurable chunking, OpenAI embeddings, and vector storage for future semantic retrieval and RAG-based question answering.
+
 ## Tech Stack
 
 - Node.js
@@ -66,6 +68,8 @@ The API will be available at:
 http://localhost:3000
 ~~~
 
+## API
+
 ### Health Check
 
 ~~~bash
@@ -80,6 +84,54 @@ Expected response:
   "database": "up"
 }
 ~~~
+
+### Upload a Document
+
+The document ingestion endpoint accepts PDF, DOCX, and plain-text files.
+
+~~~bash
+curl -X POST http://localhost:3000/documents \
+  -F "tenantId=tenant-1" \
+  -F "category=resume" \
+  -F "file=@document.pdf"
+~~~
+
+A successful response looks like:
+
+~~~json
+{
+  "documentId": "document-uuid",
+  "chunkCount": 5,
+  "status": "ready"
+}
+~~~
+
+The ingestion pipeline:
+
+1. Validates the uploaded file.
+2. Calculates a SHA-256 content hash.
+3. Checks for an existing document for the same tenant.
+4. Extracts text from the document.
+5. Splits the text into overlapping chunks.
+6. Generates an embedding for each chunk.
+7. Stores the chunks and embeddings in PostgreSQL using pgvector.
+8. Marks the document as `ready`.
+
+### Duplicate Documents
+
+Documents are uniquely identified per tenant using:
+
+~~~text
+tenant_id + content_hash
+~~~
+
+Uploading a document that has already been successfully ingested, or is currently being processed, returns:
+
+~~~text
+409 Conflict
+~~~
+
+Previously failed documents can be re-ingested using the same tenant and content hash.
 
 ## Project Structure
 
@@ -99,6 +151,7 @@ src/
 │   ├── documents/
 │   │   ├── chunker.ts
 │   │   ├── document.repository.ts
+│   │   ├── document.routes.ts
 │   │   ├── ingestion.service.ts
 │   │   └── text-extractor.ts
 │   │
@@ -139,17 +192,20 @@ README.md
 - [x] OpenAI embedding generation
 - [x] Vector storage using pgvector
 - [x] Document ingestion service
+- [x] Document upload API
+- [x] Tenant-aware duplicate document detection
+- [x] Failed document re-ingestion
+- [x] 409 Conflict handling for duplicate documents
 - [x] Unit tests for chunking and ingestion
 - [x] Health check endpoint
 
 ### Planned
 
-- [ ] Document upload API
 - [ ] Vector similarity search
 - [ ] RAG question answering
 - [ ] Conversation memory
 - [ ] Source citations
 - [ ] Streaming responses
-- [ ] Resilience and retry handling
 - [ ] Integration tests
 - [ ] API documentation
+- [ ] Production resilience and retry handling
