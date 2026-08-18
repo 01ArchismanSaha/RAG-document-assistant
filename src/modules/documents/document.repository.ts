@@ -132,3 +132,63 @@ export async function updateDocumentStatus(
         [status, errorMessage, documentId]
     );
 }
+
+export async function findDocumentByTenantAndHash(
+    tenantId: string,
+    contentHash: string
+): Promise<DocumentRecord | null> {
+    const result = await pool.query(
+        `
+        SELECT
+            id,
+            tenant_id,
+            filename,
+            mime_type,
+            size_bytes,
+            content_hash,
+            category,
+            status,
+            error_message,
+            created_at,
+            updated_at
+        FROM documents
+        WHERE tenant_id = $1
+          AND content_hash = $2
+        LIMIT 1
+        `,
+        [tenantId, contentHash]
+    );
+
+    const row = result.rows[0];
+
+    if (!row) {
+        return null;
+    }
+
+    return {
+        id: row.id,
+        tenantId: row.tenant_id,
+        filename: row.filename,
+        mimeType: row.mime_type,
+        sizeBytes: row.size_bytes,
+        contentHash: row.content_hash,
+        category: row.category,
+        status: row.status,
+        errorMessage: row.error_message,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+    };
+}
+
+export async function deleteDocumentChunks(
+    client: PoolClient,
+    documentId: string
+): Promise<void> {
+    await client.query(
+        `
+        DELETE FROM document_chunks
+        WHERE document_id = $1
+        `,
+        [documentId]
+    );
+}

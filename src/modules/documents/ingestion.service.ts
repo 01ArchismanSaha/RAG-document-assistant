@@ -6,6 +6,8 @@ import { chunkText } from "./chunker.js";
 import {
     createDocument,
     createDocumentChunks,
+    deleteDocumentChunks,
+    findDocumentByTenantAndHash,
     updateDocumentStatus,
 } from "./document.repository.js";
 import { extractText } from "./text-extractor.js";
@@ -25,32 +27,81 @@ export interface IngestDocumentResult {
     chunkCount: number;
 }
 
+export class DuplicateDocumentError extends Error {
+    constructor(message = "Document already exists") {
+        super(message);
+        this.name = "DuplicateDocumentError";
+    }
+}
+
+export class DocumentProcessingError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "DocumentProcessingError";
+    }
+}
+
 export async function ingestDocument(
     input: IngestDocumentInput
 ): Promise<IngestDocumentResult> {
-    const client = await pool.connect();
+    const existingDocument = await findDocumentByTenantAndHash(
+        input.tenantId,
+        input.contentHash
+    );
 
-    let documentId: string | undefined;
+    let documentId: string;
+
+    if (existingDocument) {
+        if (
+            existingDocument.status === "ready" ||
+            existingDocument.status === "pending" ||
+            existingDocument.status === "processing"
+        ) {
+            throw new DuplicateDocumentError(
+                "Document already exists or is currently being processed"
+            );
+        }
+
+        // Failed document: reuse it for retry.
+        documentId = existingDocument.id;
+    } else {
+        const client = await pool.connect();
+
+        try {
+            const document = await createDocument(client, {
+                tenantId: input.tenantId,
+                filename: input.filename,
+                mimeType: input.mimeType,
+                sizeBytes: input.sizeBytes,
+                contentHash: input.contentHash,
+                category: input.category,
+            });
+
+            documentId = document.id;
+
+            await updateDocumentStatus(
+                client,
+                documentId,
+                "processing"
+            );
+        } finally {
+            client.release();
+        }
+    }
+
+    const processingClient = await pool.connect();
 
     try {
-        // Create the document record first.
-        const document = await createDocument(client, {
-            tenantId: input.tenantId,
-            filename: input.filename,
-            mimeType: input.mimeType,
-            sizeBytes: input.sizeBytes,
-            contentHash: input.contentHash,
-            category: input.category,
-        });
-
-        documentId = document.id;
-
         await updateDocumentStatus(
-            client,
+            processingClient,
             documentId,
             "processing"
         );
+    } finally {
+        processingClient.release();
+    }
 
+    try {
         // Extract text from the uploaded file.
         const text = await extractText(
             input.buffer,
@@ -58,14 +109,18 @@ export async function ingestDocument(
         );
 
         if (!text.trim()) {
-            throw new Error("Document contains no extractable text");
+            throw new DocumentProcessingError(
+                "Document contains no extractable text"
+            );
         }
 
         // Split the extracted text into chunks.
         const chunks = chunkText(text);
 
         if (chunks.length === 0) {
-            throw new Error("Document produced no chunks");
+            throw new DocumentProcessingError(
+                "Document produced no chunks"
+            );
         }
 
         // Generate an embedding for every chunk.
@@ -85,10 +140,18 @@ export async function ingestDocument(
             });
         }
 
-        // Database transaction for the final writes.
-        await client.query("BEGIN");
+        // Final database writes happen inside a short transaction.
+        const client = await pool.connect();
 
         try {
+            await client.query("BEGIN");
+
+            // Remove chunks from a previous failed ingestion.
+            await deleteDocumentChunks(
+                client,
+                documentId
+            );
+
             await createDocumentChunks(
                 client,
                 chunksWithEmbeddings
@@ -104,6 +167,8 @@ export async function ingestDocument(
         } catch (error) {
             await client.query("ROLLBACK");
             throw error;
+        } finally {
+            client.release();
         }
 
         return {
@@ -111,24 +176,22 @@ export async function ingestDocument(
             chunkCount: chunks.length,
         };
     } catch (error) {
-        if (documentId) {
-            try {
-                await updateDocumentStatus(
-                    client,
-                    documentId,
-                    "failed",
-                    error instanceof Error
-                        ? error.message
-                        : "Unknown ingestion error"
-                );
-            } catch {
-                // Preserve the original ingestion error.
-            }
+        const client = await pool.connect();
+
+        try {
+            await updateDocumentStatus(
+                client,
+                documentId,
+                "failed",
+                error instanceof Error
+                    ? error.message
+                    : "Unknown ingestion error"
+            );
+        } finally {
+            client.release();
         }
 
         throw error;
-    } finally {
-        client.release();
     }
 }
 

@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 
 import {
     calculateContentHash,
+    DuplicateDocumentError,
     ingestDocument,
 } from "./ingestion.service.js";
 
@@ -94,6 +95,12 @@ export async function documentRoutes(
                 status: "ready",
             });
         } catch (error) {
+            if (error instanceof DuplicateDocumentError) {
+                return reply.status(409).send({
+                    error: error.message,
+                });
+            }
+
             request.log.error(error);
 
             return reply.status(500).send({
